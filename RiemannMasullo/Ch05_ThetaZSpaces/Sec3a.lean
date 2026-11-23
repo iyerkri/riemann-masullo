@@ -2523,19 +2523,6 @@ theorem distribution_coordinatePlane_decomposition [Nonempty ι] (T : 𝒟'(ι �
         IsCompact (Distribution.dsupport (⇑(A α)))) ∧
       ∀ f : 𝒟(ι ⊕ κ), T f = ∑ α : index(N), A α (R𝒟 (∂𝒟[ι ⊕ κ, multi(α)] f)) := by sorry
 
-open Classical in
-/-- Paper: Theorem 5.3.2.3(3), p. 245.
-On a pure tensor, the summand factors as the normal derivative evaluated at zero and the
-tangential coefficient applied to the derivative of the tangential test.
-Deviation: This is the test-function derivative form of (5.3.2.5), with the transpose signs
-canceled. Using distributional derivatives in both factors requires a sign of (-1)^|α|. -/
-theorem distribution_coordinatePlane_decomposition_apply_tmul {N : ℕ} (T : 𝒟'(ι ⊕ κ))
-    (A : index(N) → 𝒟'(κ))
-    (hA : ∀ f : 𝒟(ι ⊕ κ), T f = ∑ α : index(N), A α (R𝒟 (∂𝒟[ι ⊕ κ, multi(α)] f)))
-    (f : 𝒟(ι ⊕ κ)) (g : 𝒟(ι)) (h : 𝒟(κ))
-    (hf : ∀ x : Eᵣ(ι ⊕ κ), f x = factors(g, h, x)) :
-    T f = ∑ α : index(N), (∂𝒟[ι, normal(α)] g) 0 * A α (∂𝒟[κ, tangent(α)] h) := by sorry
-
 private theorem coordinateDerivative_split_sum {M : Type*} [Monoid M] (D : (ι ⊕ κ) → M)
     (hc : ∀ i j, Commute (D i) (D j)) (a : (ι ⊕ κ) → ℕ) :
     coordinateDerivative D a =
@@ -2621,6 +2608,78 @@ private theorem coordinateDerivative_plane_restrict (R : 𝒟(ι ⊕ κ) →L[�
   rw [coordinateDerivative_split_sum D hD a, coordinateDerivative_split_sum D hD b]
   rw [show b ∘ Sum.inr = 0 from rfl, coordinateDerivative_zero, one_mul, mul_apply_eq_comp]
   exact hprod _ _
+
+open Classical in
+/-- Differentiating a pure tensor in a normal coordinate differentiates its first factor. -/
+private theorem distribution_coordinatePlane_decomposition_apply_tmul_normal_line
+    (i : ι) (f : 𝒟(ι ⊕ κ)) (g : 𝒟(ι)) (h : 𝒟(κ))
+    (hf : ∀ x : Eᵣ(ι ⊕ κ), f x = factors(g, h, x)) (x : Eᵣ(ι ⊕ κ)) :
+    (LineDeriv.lineDerivOpCLM ℂ 𝒟(ι ⊕ κ) (eᵣ (Sum.inl i) : Eᵣ(ι ⊕ κ)) f) x =
+      factors((LineDeriv.lineDerivOpCLM ℂ 𝒟(ι) (eᵣ i : Eᵣ(ι)) g), h, x) := by
+  simp only [TestFunction.lineDerivOpCLM_eq_lineDerivCLM,
+    TestFunction.lineDerivCLM_apply_of_le le_top, lineDeriv]
+  rw [← deriv_mul_const_field]
+  congr 1
+  funext t
+  rw [hf]
+  congr 2
+  · ext j
+    simp
+  · ext j
+    simp
+
+open Classical in
+/-- Restricting a purely normal derivative of a pure tensor evaluates its first factor at zero. -/
+private theorem distribution_coordinatePlane_decomposition_apply_tmul_normal_restrict
+    (b : ι → ℕ) (f : 𝒟(ι ⊕ κ)) (g : 𝒟(ι)) (h : 𝒟(κ))
+    (hf : ∀ x : Eᵣ(ι ⊕ κ), f x = factors(g, h, x)) :
+    R𝒟 (∂𝒟[ι ⊕ κ, Sum.elim b (0 : κ → ℕ)] f) = (∂𝒟[ι, b] g) 0 • h := by
+  let D (i : ι ⊕ κ) := (LineDeriv.lineDerivOpCLM ℂ 𝒟(ι ⊕ κ) (eᵣ i : Eᵣ(ι ⊕ κ)) :
+    𝒟(ι ⊕ κ) →L[ℂ] 𝒟(ι ⊕ κ))
+  let d (i : ι) := (LineDeriv.lineDerivOpCLM ℂ 𝒟(ι) (eᵣ i : Eᵣ(ι)) : 𝒟(ι) →L[ℂ] 𝒟(ι))
+  let P (F : 𝒟(ι ⊕ κ)) (G : 𝒟(ι)) := ∀ x : Eᵣ(ι ⊕ κ), F x = factors(G, h, x)
+  have hpow (i : ι) (n : ℕ) (F : 𝒟(ι ⊕ κ)) (G : 𝒟(ι)) (hFG : P F G) :
+      P ((D (.inl i) ^ n) F) ((d i ^ n) G) := by
+    induction n with
+    | zero => exact hFG
+    | succ n ih =>
+      rw [pow_succ', pow_succ', mul_apply_eq_comp, mul_apply_eq_comp]
+      exact distribution_coordinatePlane_decomposition_apply_tmul_normal_line i _ _ h ih
+  have hprod (l : List ι) :
+      P ((l.map (fun i ↦ D (.inl i) ^ b i)).prod f) ((l.map (fun i ↦ d i ^ b i)).prod g) := by
+    induction l with
+    | nil => exact hf
+    | cons i l ih =>
+      simp only [List.map_cons, List.prod_cons, mul_apply_eq_comp]
+      exact hpow i (b i) _ _ ih
+  change R𝒟 (coordinateDerivative D (Sum.elim b (0 : κ → ℕ)) f) = _
+  rw [coordinateDerivative_split_sum D (fun _ _ ↦ coordinateDerivative_line_commute _ _),
+    show Sum.elim b (0 : κ → ℕ) ∘ Sum.inr = 0 from rfl, coordinateDerivative_zero, one_mul]
+  apply TestFunction.ext
+  intro y
+  rw [exists_testFunction_coordinatePlaneRestriction.choose_spec]
+  exact hprod Finset.univ.toList (insertPlane y)
+
+open Classical in
+/-- Paper: Theorem 5.3.2.3(3), p. 245.
+On a pure tensor, the summand factors as the normal derivative evaluated at zero and the
+tangential coefficient applied to the derivative of the tangential test.
+Deviation: This is the test-function derivative form of (5.3.2.5), with the transpose signs
+canceled. Using distributional derivatives in both factors requires a sign of (-1)^|α|. -/
+theorem distribution_coordinatePlane_decomposition_apply_tmul {N : ℕ} (T : 𝒟'(ι ⊕ κ))
+    (A : index(N) → 𝒟'(κ))
+    (hA : ∀ f : 𝒟(ι ⊕ κ), T f = ∑ α : index(N), A α (R𝒟 (∂𝒟[ι ⊕ κ, multi(α)] f)))
+    (f : 𝒟(ι ⊕ κ)) (g : 𝒟(ι)) (h : 𝒟(κ))
+    (hf : ∀ x : Eᵣ(ι ⊕ κ), f x = factors(g, h, x)) :
+    T f = ∑ α : index(N), (∂𝒟[ι, normal(α)] g) 0 * A α (∂𝒟[κ, tangent(α)] h) := by
+  rw [hA f]
+  apply Finset.sum_congr rfl
+  intro α _
+  rw [coordinateDerivative_plane_restrict R𝒟
+    exists_testFunction_coordinatePlaneRestriction.choose_spec (multi(α)) f,
+    distribution_coordinatePlane_decomposition_apply_tmul_normal_restrict _ f g h hf,
+    map_smul, map_smul, smul_eq_mul]
+  rfl
 
 open Classical in
 /-- Paper: Theorem 5.3.2.3(4), p. 245.

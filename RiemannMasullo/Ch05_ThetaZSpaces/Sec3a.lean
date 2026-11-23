@@ -3339,6 +3339,75 @@ theorem coordinateDerivative_testFunction_toSchwartz {ι : Type*} [Fintype ι]
     simp only [List.map_cons, List.prod_cons, mul_apply_eq_comp]
     rw [← ih, ← hpow]
 
+/-- A test disjoint from the support of a distribution is a finite sum of tests on
+open sets where the distribution vanishes. -/
+private theorem distribution_coordinatePlane_decomposition_tempered_extension_vanishes {E : Type*}
+    [NormedAddCommGroup E] [NormedSpace ℝ E] [FiniteDimensional ℝ E]
+    (A : StrongDual ℂ 𝓓((⊤ : Opens E), ℂ)) (g : 𝓓((⊤ : Opens E), ℂ))
+    (hg : Disjoint (tsupport (⇑g)) (Distribution.dsupport (⇑A))) : A g = 0 := by
+  classical
+  let K := tsupport (⇑g)
+  have hloc (x : K) :
+      ∃ U : Set E, Distribution.IsVanishingOn (⇑A) U ∧ IsOpen U ∧ (x : E) ∈ U :=
+    (Distribution.notMem_dsupport_iff _).mp (Set.disjoint_left.mp hg x.property)
+  choose U hvan hopen hmem using hloc
+  obtain ⟨s, hs⟩ := g.hasCompactSupport.elim_finite_subcover U hopen
+    (fun x hx ↦ Set.mem_iUnion.mpr ⟨⟨x, hx⟩, hmem ⟨x, hx⟩⟩)
+  have hcover : K ⊆ ⋃ i : s, U i.val := by
+    intro x hx
+    obtain ⟨i, hi⟩ := Set.mem_iUnion.mp (hs hx)
+    obtain ⟨his, hix⟩ := Set.mem_iUnion.mp hi
+    exact Set.mem_iUnion.mpr ⟨⟨i, his⟩, hix⟩
+  obtain ⟨ρ, hρ⟩ := SmoothPartitionOfUnity.exists_isSubordinate (modelWithCornersSelf ℝ E)
+    (show IsClosed K from isClosed_closure) (fun i : s ↦ U i.val) (fun i ↦ hopen i.val) hcover
+  let part (i : s) : 𝓓((⊤ : Opens E), ℂ) :=
+    ⟨fun x ↦ ρ i x • g x, (contMDiff_iff_contDiff.mp (ρ i).contMDiff).smul g.contDiff,
+      g.hasCompactSupport.smul_left (f := ⇑(ρ i)), fun _ _ ↦ trivial⟩
+  have hsum : ∑ i : s, part i = g := by
+    apply TestFunction.ext
+    intro x
+    rw [sum_apply]
+    change (∑ i : s, ρ i x • g x) = g x
+    rw [← Finset.sum_smul]
+    by_cases hx : x ∈ K
+    · rw [ρ.sum_finsupport' x hx (Finset.subset_univ _), one_smul]
+    · rw [image_eq_zero_of_notMem_tsupport hx, smul_zero]
+  rw [← hsum, map_sum]
+  exact Finset.sum_eq_zero fun i _ ↦ hvan i.val (part i)
+    ((tsupport_smul_subset_left (⇑(ρ i)) (⇑g)).trans (hρ i))
+
+/-- Multiplication by a fixed smooth, compactly supported cutoff maps Schwartz functions
+continuously into test functions supported in the same compact set. -/
+private theorem distribution_coordinatePlane_decomposition_tempered_extension_cutoff {E : Type*}
+    [NormedAddCommGroup E] [NormedSpace ℝ E] (φ : E → ℂ)
+    (hφ : ContDiff ℝ (⊤ : ℕ∞) φ) (hc : HasCompactSupport φ) :
+    ∃ L : 𝓢(E, ℂ) →L[ℂ] 𝓓((⊤ : Opens E), ℂ), ∀ f x, L f x = φ x * f x := by
+  let K : Compacts E := ⟨tsupport φ, hc⟩
+  let M := SchwartzMap.smulLeftCLM ℂ φ
+  have hM (f : 𝓢(E, ℂ)) (x : E) : M f x = φ x * f x :=
+    SchwartzMap.smulLeftCLM_apply_apply (hc.hasTemperateGrowth hφ) f x
+  let L : 𝓢(E, ℂ) →ₗ[ℂ] 𝓓_{K}(E, ℂ) :=
+    { toFun f := ContDiffMapSupportedIn.of_support_subset ((M f).smooth ⊤) (by
+        intro x hx
+        apply subset_tsupport
+        exact fun hzero ↦ hx (by rw [hM, hzero, zero_mul]))
+      map_add' f g := by
+        ext x
+        exact congrArg (fun u : 𝓢(E, ℂ) ↦ u x) (M.map_add f g)
+      map_smul' c f := by
+        ext x
+        exact congrArg (fun u : 𝓢(E, ℂ) ↦ u x) (M.map_smul c f) }
+  -- Each fixed-support seminorm is bounded by the corresponding Schwartz seminorm.
+  have hL : Continuous L := by
+    apply (ContDiffMapSupportedIn.withSeminorms ℂ E ℂ ⊤ K).continuous_of_continuous_comp L
+    intro n
+    apply Seminorm.continuous_of_le (q := (SchwartzMap.seminorm ℂ 0 n).comp M.toLinearMap)
+    · exact ((schwartz_withSeminorms ℂ E ℂ).continuous_seminorm (0, n)).comp M.continuous
+    · intro f
+      exact (ContDiffMapSupportedIn.seminorm_top_le_iff ℂ (apply_nonneg _ _) n (L f)).mpr
+        fun x _ ↦ SchwartzMap.norm_iteratedFDeriv_le_seminorm ℂ (M f) n x
+  exact ⟨(TestFunction.ofSupportedInCLM ℂ (fun _ _ ↦ trivial)).comp ⟨L, hL⟩, hM⟩
+
 /-- Paper: Theorem 5.3.2.3(5), p. 245.
 A compactly supported distribution has a tempered extension. Cutting a Schwartz test off by a
 test function that equals one on a neighbourhood of the distribution's support does not change
@@ -3349,7 +3418,29 @@ private theorem distribution_coordinatePlane_decomposition_tempered_extension {E
     (hA : IsCompact (Distribution.dsupport (⇑A))) :
     ∃ B : StrongDual ℂ 𝓢(E, ℂ),
       ∀ g : 𝓓((⊤ : Opens E), ℂ), B (g.hasCompactSupport.toSchwartzMap g.contDiff) = A g := by
-  sorry
+  obtain ⟨K, hK, hAK⟩ := exists_compact_superset hA
+  obtain ⟨χ, hχone, hχzero, -⟩ := exists_contMDiffMap_one_nhds_of_subset_interior
+    (modelWithCornersSelf ℝ E) (n := ⊤) hA.isClosed hAK
+  let φ : E → ℂ := fun x ↦ (χ x : ℂ)
+  have hχc : HasCompactSupport (⇑χ) := hK.of_isClosed_subset isClosed_closure
+    (hK.isClosed.closure_subset_iff.mpr fun x hx ↦ by
+      by_contra h
+      exact hx (hχzero x h))
+  obtain ⟨L, hL⟩ := distribution_coordinatePlane_decomposition_tempered_extension_cutoff φ
+    (Complex.ofRealCLM.contDiff.comp (contMDiff_iff_contDiff.mp χ.contMDiff))
+    (hχc.comp_left Complex.ofReal_zero)
+  refine ⟨A.comp L, fun g ↦ ?_⟩
+  let f := g.hasCompactSupport.toSchwartzMap g.contDiff
+  change A (L f) = A g
+  apply sub_eq_zero.mp
+  rw [← map_sub]
+  apply distribution_coordinatePlane_decomposition_tempered_extension_vanishes
+  apply Set.disjoint_left.mpr
+  intro x hx hxA
+  apply (notMem_tsupport_iff_eventuallyEq.mpr ?_) hx
+  filter_upwards [eventually_nhdsSet_iff_forall.mp hχone x hxA] with y hy
+  change L f y - g y = 0
+  simp [hL, φ, hy, f]
 
 /-- Restriction to the coordinate plane commutes with passing a compactly supported test to
 its Schwartz function: both restrictions are given by inserting zeros in the normal
